@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 DB_PATH = os.getenv("DB_PATH", "listings.db")
 
+
 def init_db():
     folder = os.path.dirname(DB_PATH)
     if folder:
@@ -13,11 +14,20 @@ def init_db():
         db.execute("CREATE TABLE IF NOT EXISTS listings (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, data TEXT NOT NULL)")
         db.commit()
 
+
 def save_listing(data):
+    data.setdefault("status", "draft")
+    data.setdefault("buy_price", 0)
+    data.setdefault("sell_price", 0)
+    data.setdefault("profit", 0)
+    data.setdefault("tags", [])
+    data.setdefault("quality_score", 0)
+
     with sqlite3.connect(DB_PATH) as db:
         cur = db.execute("INSERT INTO listings(created_at, data) VALUES (?, ?)", (datetime.now(timezone.utc).isoformat(), json.dumps(data, ensure_ascii=False)))
         db.commit()
         return cur.lastrowid
+
 
 def get_listing(listing_id):
     with sqlite3.connect(DB_PATH) as db:
@@ -26,7 +36,15 @@ def get_listing(listing_id):
         return None
     return {"id": row[0], "created_at": row[1], **json.loads(row[2])}
 
+
 def update_listing(listing_id, data):
+    data["profit"] = float(data.get("sell_price", 0)) - float(data.get("buy_price", 0))
     with sqlite3.connect(DB_PATH) as db:
         db.execute("UPDATE listings SET data = ? WHERE id = ?", (json.dumps(data, ensure_ascii=False), listing_id))
         db.commit()
+
+
+def get_all_listings():
+    with sqlite3.connect(DB_PATH) as db:
+        rows = db.execute("SELECT id, created_at, data FROM listings ORDER BY id DESC").fetchall()
+    return [{"id": row[0], "created_at": row[1], **json.loads(row[2])} for row in rows]
