@@ -32,7 +32,12 @@ async def on_message(message):
     if imgs:
         m=await message.reply('🤖 Analyserar...')
         try:
-            data=await analyze_images(imgs); lid=save_listing(data)
+            data=await analyze_images(imgs)
+            data.setdefault('status','draft')
+            data.setdefault('buy_price',0)
+            data.setdefault('sell_price',0)
+            data.setdefault('profit',0)
+            lid=save_listing(data)
             await m.edit(content=f'✅ Listing #{lid}\n{vinted_text(data)}')
         except Exception as e: await m.edit(content=f'❌ {e}')
     await bot.process_commands(message)
@@ -44,12 +49,37 @@ async def inventory(ctx):
 
 @bot.command()
 async def sold(ctx,id:int,price:float):
-    item=get_listing(id); item['status']='sold'; item['sell_price']=price; update_listing(id,item)
-    await ctx.send(f"✅ Sold #{id} profit {item.get('profit',0)}kr")
+    item=get_listing(id)
+    if not item:
+        return await ctx.send('❌ Listing not found')
+    item['status']='sold'
+    item['sell_price']=price
+    item['profit']=price-float(item.get('buy_price',0))
+    update_listing(id,item)
+    await ctx.send(f"✅ Sold #{id}\nProfit: {item['profit']}kr")
 
 @bot.command()
 async def listing(ctx,id:int):
-    await ctx.send(vinted_text(get_listing(id)))
+    item=get_listing(id)
+    await ctx.send(vinted_text(item) if item else '❌ Listing not found')
+
+@bot.command()
+async def dashboard(ctx):
+    items=get_all_listings()
+    sold=[i for i in items if i.get('status')=='sold']
+    revenue=sum(float(i.get('sell_price',0)) for i in sold)
+    profit=sum(float(i.get('profit',0)) for i in sold)
+    await ctx.send(f"📊 Reseller Dashboard\n\nItems: {len(items)}\nSold: {len(sold)}\nRevenue: {revenue}kr\nProfit: {profit}kr")
+
+@bot.command()
+async def buyprice(ctx,id:int,price:float):
+    item=get_listing(id)
+    if not item:
+        return await ctx.send('❌ Listing not found')
+    item['buy_price']=price
+    item['profit']=float(item.get('sell_price',0))-price
+    update_listing(id,item)
+    await ctx.send(f'💰 Updated #{id} purchase price: {price}kr')
 
 async def main():
     await start_server(); await bot.start(TOKEN)
