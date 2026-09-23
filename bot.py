@@ -1,8 +1,10 @@
 import io
 import os
+import asyncio
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
+from aiohttp import web
 from database import init_db, save_listing, get_listing
 from gemini_service import analyze_images
 
@@ -10,10 +12,26 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 ALLOWED_CHANNEL_ID = int(os.getenv("ALLOWED_CHANNEL_ID", "0"))
 MAX_IMAGES = int(os.getenv("MAX_IMAGES", "8"))
+PORT = int(os.getenv("PORT", "10000"))
 
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+
+async def health_handler(request):
+    return web.Response(text="OK")
+
+
+async def start_health_server():
+    app = web.Application()
+    app.router.add_get("/", health_handler)
+    app.router.add_get("/health", health_handler)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", PORT)
+    await site.start()
+    print(f"Health server listening on port {PORT}")
 
 
 def listing_text(item):
@@ -25,10 +43,12 @@ def listing_text(item):
             f"{item.get('description','')}\n\n"
             f"**Kontrollera:** {', '.join(item.get('needs_confirmation', [])) or 'Inget angivet'}")
 
+
 @bot.event
 async def on_ready():
     init_db()
     print(f"Inloggad som {bot.user}")
+
 
 @bot.event
 async def on_message(message):
@@ -56,6 +76,7 @@ async def on_message(message):
             await status.edit(content=f"❌ Något gick fel: `{type(exc).__name__}: {exc}`")
     await bot.process_commands(message)
 
+
 @bot.command(name="listing")
 async def listing(ctx, listing_id: int):
     item = get_listing(listing_id)
@@ -64,10 +85,17 @@ async def listing(ctx, listing_id: int):
         return
     await ctx.send(listing_text(item))
 
+
 @bot.command(name="help_vinted")
 async def help_vinted(ctx):
     await ctx.send("Skicka en eller flera produktbilder så analyserar jag dem. Använd `!listing ID` för att hämta en sparad listing. Allt granskas manuellt innan publicering.")
 
+
 if not TOKEN:
     raise RuntimeError("DISCORD_TOKEN saknas")
-bot.run(TOKEN)
+
+async def main():
+    await start_health_server()
+    await bot.start(TOKEN)
+
+asyncio.run(main())
