@@ -37,6 +37,7 @@ class ListingView(discord.ui.View):
     def __init__(self, id):
         super().__init__(timeout=1800)
         self.id = id
+        self.add_item(discord.ui.Button(label='🚀 Öppna Vinted', url='https://www.vinted.se/upload'))
 
     @discord.ui.button(label='📋 Vinted text')
     async def text(self, i, b):
@@ -90,15 +91,8 @@ async def on_message(message):
         try:
             data = await analyze_images(images)
             listing_id = save_listing(data)
-
-            # Automatically prepare the listing immediately
             formatted = vinted_text(data)
-            await msg.edit(
-                content=(f'✅ Listing #{listing_id} skapad automatiskt\n\n'
-                         f'{formatted}\n\n'
-                         'Klicka på knapparna för att förbättra den.'),
-                view=ListingView(listing_id)
-            )
+            await msg.edit(content=f'✅ Listing #{listing_id} skapad automatiskt\n\n{formatted}\n\nKlicka på knapparna för att förbättra den.', view=ListingView(listing_id))
         except Exception as e:
             await msg.edit(content=f'❌ Automationsfel: {e}')
 
