@@ -59,3 +59,20 @@ Hitta inte på information. Skriv endast beskrivningen.'''
         config=types.GenerateContentConfig(temperature=0.4)
     )
     return response.text.strip()
+
+async def quality_score(item):
+    prompt = f'''Bedöm denna Vinted-annons från 0 till 100.
+
+Titel: {item.get('title')}
+Beskrivning: {item.get('description')}
+Kategori: {item.get('category')}
+Pris: {item.get('suggested_price_sek')} kr
+
+Returnera endast JSON:
+{{"score": 85, "improvements": ["lägg till storlek", "bättre första bild"]}}'''
+    response = await client().aio.models.generate_content(
+        model=MODEL,
+        contents=[prompt],
+        config=types.GenerateContentConfig(response_mime_type="application/json", temperature=0.2)
+    )
+    return json.loads(response.text)
