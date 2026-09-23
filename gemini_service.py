@@ -38,3 +38,24 @@ async def analyze_images(images):
         config=types.GenerateContentConfig(response_mime_type="application/json", response_schema=SCHEMA, temperature=0.2)
     )
     return json.loads(response.text)
+
+async def regenerate_description(item):
+    prompt = f'''Skriv en kort och säljande men ärlig Vinted-beskrivning på svenska.
+
+Titel: {item.get('title')}
+Varumärke: {item.get('brand')}
+Kategori: {item.get('category')} / {item.get('subcategory')}
+Storlek: {item.get('size')}
+Färg: {item.get('color')}
+Skick: {item.get('condition')}
+Material: {item.get('material')}
+Synliga fel: {', '.join(item.get('visible_defects', []))}
+
+Hitta inte på information. Skriv endast beskrivningen.'''
+
+    response = await client().aio.models.generate_content(
+        model=MODEL,
+        contents=[prompt],
+        config=types.GenerateContentConfig(temperature=0.4)
+    )
+    return response.text.strip()
