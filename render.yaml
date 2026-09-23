@@ -1,0 +1,23 @@
+services:
+  - type: worker
+    name: yazoni-vinted-ai
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: ALLOWED_CHANNEL_ID
+        value: "0"
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: DB_PATH
+        value: /var/data/listings.db
+      - key: MAX_IMAGES
+        value: "8"
+    disk:
+      name: listings-disk
+      mountPath: /var/data
+      sizeGB: 1
