@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from aiohttp import web
 from database import init_db, save_listing, get_listing, update_listing, get_all_listings
 from gemini_service import analyze_images, regenerate_description
+from reseller_features import listing_quality, generate_tags
 
 load_dotenv()
 TOKEN=os.getenv('DISCORD_TOKEN')
@@ -37,8 +38,13 @@ async def on_message(message):
             data.setdefault('buy_price',0)
             data.setdefault('sell_price',0)
             data.setdefault('profit',0)
+            data['tags']=generate_tags(data)
+            quality=listing_quality(data)
+            data['quality_score']=quality['score']
+            data['quality_missing']=quality['missing']
             lid=save_listing(data)
-            await m.edit(content=f'✅ Listing #{lid}\n{vinted_text(data)}')
+            improvements=', '.join(quality['missing']) or 'Ingen - redo!'
+            await m.edit(content=f"✅ Listing #{lid}\n⭐ Quality: {quality['score']}/100\n🔧 Improve: {improvements}\n\n{vinted_text(data)}")
         except Exception as e: await m.edit(content=f'❌ {e}')
     await bot.process_commands(message)
 
@@ -50,12 +56,8 @@ async def inventory(ctx):
 @bot.command()
 async def sold(ctx,id:int,price:float):
     item=get_listing(id)
-    if not item:
-        return await ctx.send('❌ Listing not found')
-    item['status']='sold'
-    item['sell_price']=price
-    item['profit']=price-float(item.get('buy_price',0))
-    update_listing(id,item)
+    if not item:return await ctx.send('❌ Listing not found')
+    item['status']='sold'; item['sell_price']=price; item['profit']=price-float(item.get('buy_price',0)); update_listing(id,item)
     await ctx.send(f"✅ Sold #{id}\nProfit: {item['profit']}kr")
 
 @bot.command()
@@ -65,20 +67,14 @@ async def listing(ctx,id:int):
 
 @bot.command()
 async def dashboard(ctx):
-    items=get_all_listings()
-    sold=[i for i in items if i.get('status')=='sold']
-    revenue=sum(float(i.get('sell_price',0)) for i in sold)
-    profit=sum(float(i.get('profit',0)) for i in sold)
-    await ctx.send(f"📊 Reseller Dashboard\n\nItems: {len(items)}\nSold: {len(sold)}\nRevenue: {revenue}kr\nProfit: {profit}kr")
+    items=get_all_listings(); sold=[i for i in items if i.get('status')=='sold']
+    await ctx.send(f"📊 Reseller Dashboard\n\nItems: {len(items)}\nSold: {len(sold)}\nRevenue: {sum(float(i.get('sell_price',0)) for i in sold)}kr\nProfit: {sum(float(i.get('profit',0)) for i in sold)}kr")
 
 @bot.command()
 async def buyprice(ctx,id:int,price:float):
     item=get_listing(id)
-    if not item:
-        return await ctx.send('❌ Listing not found')
-    item['buy_price']=price
-    item['profit']=float(item.get('sell_price',0))-price
-    update_listing(id,item)
+    if not item:return await ctx.send('❌ Listing not found')
+    item['buy_price']=price; item['profit']=float(item.get('sell_price',0))-price; update_listing(id,item)
     await ctx.send(f'💰 Updated #{id} purchase price: {price}kr')
 
 async def main():
