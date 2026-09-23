@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from aiohttp import web
 from database import init_db, save_listing, get_listing, update_listing, get_all_listings
 from gemini_service import analyze_images, regenerate_description
-from reseller_features import listing_quality, generate_tags, photo_quality
+from reseller_features import listing_quality, generate_tags, photo_quality, recommend_price
 
 load_dotenv()
 TOKEN=os.getenv('DISCORD_TOKEN')
@@ -18,9 +18,8 @@ async def start_server():
     app=web.Application(); app.router.add_get('/',lambda r:web.Response(text='running'))
     runner=web.AppRunner(app); await runner.setup(); await web.TCPSite(runner,'0.0.0.0',PORT).start()
 
-
 def vinted_text(x):
-    return f"{x.get('title','Okänt')}\n\n{x.get('description','')}\n\nPris: {x.get('suggested_price_sek','')} kr\nTaggar: {', '.join(x.get('tags',[]))}"
+    return f"{x.get('title','Okänt')}\n\n{x.get('description','')}\n\nPris: {x.get('suggested_price_sek','')} kr\nRekommenderat pris: {x.get('recommended_price', '')} kr\nTaggar: {', '.join(x.get('tags',[]))}"
 
 @bot.event
 async def on_ready():
@@ -39,6 +38,7 @@ async def on_message(message):
             data.setdefault('sell_price',0)
             data.setdefault('profit',0)
             data['tags']=generate_tags(data)
+            data['recommended_price']=recommend_price(data)
             quality=listing_quality(data)
             photos=photo_quality(imgs)
             data['quality_score']=quality['score']
@@ -46,9 +46,7 @@ async def on_message(message):
             data['photo_score']=photos['score']
             data['photo_issues']=photos['issues']
             lid=save_listing(data)
-            improvements=', '.join(quality['missing']) or 'Ingen - redo!'
-            photo_note=', '.join(photos['issues']) or 'Photos look good'
-            await m.edit(content=f"✅ Listing #{lid}\n⭐ Quality: {quality['score']}/100\n📸 Photo score: {photos['score']}/100\n🔧 Improve: {improvements}\n📷 Photos: {photo_note}\n\n{vinted_text(data)}")
+            await m.edit(content=f"✅ Listing #{lid}\n⭐ Quality: {quality['score']}/100\n📸 Photo score: {photos['score']}/100\n💰 Recommended price: {data['recommended_price']}kr\n🔧 Improve: {', '.join(quality['missing']) or 'Ready'}\n\n{vinted_text(data)}")
         except Exception as e: await m.edit(content=f'❌ {e}')
     await bot.process_commands(message)
 
