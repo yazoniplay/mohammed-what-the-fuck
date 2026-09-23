@@ -1,4 +1,5 @@
 import os, asyncio
+from datetime import datetime
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -45,6 +46,7 @@ async def on_message(message):
             data['quality_missing']=quality['missing']
             data['photo_score']=photos['score']
             data['photo_issues']=photos['issues']
+            data['created_at']=datetime.now().isoformat()
             lid=save_listing(data)
             await m.edit(content=f"✅ Listing #{lid}\n⭐ Quality: {quality['score']}/100\n📸 Photo score: {photos['score']}/100\n💰 Recommended price: {data['recommended_price']}kr\n🔧 Improve: {', '.join(quality['missing']) or 'Ready'}\n\n{vinted_text(data)}")
         except Exception as e: await m.edit(content=f'❌ {e}')
@@ -54,6 +56,20 @@ async def on_message(message):
 async def inventory(ctx):
     items=get_all_listings()
     await ctx.send('\n'.join([f"#{i['id']} {i.get('title','')} | {i.get('status','draft')} | {i.get('profit',0)}kr" for i in items[:15]]) or '📦 Empty')
+
+@bot.command()
+async def stale(ctx):
+    items=get_all_listings()
+    old=[]
+    for i in items:
+        created=i.get('created_at')
+        if created:
+            try:
+                days=(datetime.now()-datetime.fromisoformat(created)).days
+                if days>=14 and i.get('status')!='sold':
+                    old.append(f"#{i['id']} {i.get('title','')} - {days} dagar - sänk pris eller förbättra bilder")
+            except: pass
+    await ctx.send('⚠️ Stale listings:\n'+'\n'.join(old) if old else '✅ No stale listings')
 
 @bot.command()
 async def sold(ctx,id:int,price:float):
