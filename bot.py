@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from aiohttp import web
 from database import init_db, save_listing, get_listing, update_listing, get_all_listings
 from gemini_service import analyze_images, regenerate_description
-from reseller_features import listing_quality, generate_tags
+from reseller_features import listing_quality, generate_tags, photo_quality
 
 load_dotenv()
 TOKEN=os.getenv('DISCORD_TOKEN')
@@ -40,11 +40,15 @@ async def on_message(message):
             data.setdefault('profit',0)
             data['tags']=generate_tags(data)
             quality=listing_quality(data)
+            photos=photo_quality(imgs)
             data['quality_score']=quality['score']
             data['quality_missing']=quality['missing']
+            data['photo_score']=photos['score']
+            data['photo_issues']=photos['issues']
             lid=save_listing(data)
             improvements=', '.join(quality['missing']) or 'Ingen - redo!'
-            await m.edit(content=f"✅ Listing #{lid}\n⭐ Quality: {quality['score']}/100\n🔧 Improve: {improvements}\n\n{vinted_text(data)}")
+            photo_note=', '.join(photos['issues']) or 'Photos look good'
+            await m.edit(content=f"✅ Listing #{lid}\n⭐ Quality: {quality['score']}/100\n📸 Photo score: {photos['score']}/100\n🔧 Improve: {improvements}\n📷 Photos: {photo_note}\n\n{vinted_text(data)}")
         except Exception as e: await m.edit(content=f'❌ {e}')
     await bot.process_commands(message)
 
