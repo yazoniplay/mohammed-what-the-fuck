@@ -29,8 +29,15 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
-    if message.author.bot:return
-    imgs=[(await a.read(),a.content_type) for a in message.attachments[:MAX_IMAGES] if a.content_type and a.content_type.startswith('image/')]
+    if message.author.bot:
+        return
+
+    imgs=[]
+    for a in message.attachments[:MAX_IMAGES]:
+        is_image = ((a.content_type and a.content_type.startswith('image/')) or a.filename.lower().endswith(('.png','.jpg','.jpeg','.webp','.gif')))
+        if is_image:
+            imgs.append((await a.read(), a.content_type or 'image/jpeg'))
+
     if imgs:
         m=await message.reply('🤖 Analyserar...')
         try:
@@ -50,7 +57,8 @@ async def on_message(message):
             data['created_at']=datetime.now().isoformat()
             lid=save_listing(data)
             await m.edit(content=f"✅ Listing #{lid}\n⭐ Quality: {quality['score']}/100\n📸 Photo score: {photos['score']}/100\n💰 Recommended price: {data['recommended_price']}kr\n🔧 Improve: {', '.join(quality['missing']) or 'Ready'}\n\n{vinted_text(data)}")
-        except Exception as e: await m.edit(content=f'❌ {e}')
+        except Exception as e:
+            await m.edit(content=f'❌ {e}')
     await bot.process_commands(message)
 
 @bot.command()
