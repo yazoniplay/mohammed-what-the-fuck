@@ -8,86 +8,100 @@ from database import init_db, save_listing, get_listing, update_listing
 from gemini_service import analyze_images, regenerate_description
 
 load_dotenv()
-TOKEN=os.getenv('DISCORD_TOKEN')
-MAX_IMAGES=int(os.getenv('MAX_IMAGES','8'))
-PORT=int(os.getenv('PORT','10000'))
+TOKEN = os.getenv('DISCORD_TOKEN')
+MAX_IMAGES = int(os.getenv('MAX_IMAGES', '8'))
+PORT = int(os.getenv('PORT', '10000'))
 
-intents=discord.Intents.default()
-intents.message_content=True
-bot=commands.Bot(command_prefix='!',intents=intents)
+intents = discord.Intents.default()
+intents.message_content = True
+bot = commands.Bot(command_prefix='!', intents=intents)
+
+_server_runner = None
 
 async def health(request):
-    return web.Response(text='OK')
+    return web.Response(text='Discord bot is running')
 
 async def start_server():
-    app=web.Application()
-    app.router.add_get('/',health)
-    runner=web.AppRunner(app)
-    await runner.setup()
-    await web.TCPSite(runner,'0.0.0.0',PORT).start()
+    global _server_runner
+    app = web.Application()
+    app.router.add_get('/', health)
+    app.router.add_get('/health', health)
+
+    _server_runner = web.AppRunner(app)
+    await _server_runner.setup()
+
+    site = web.TCPSite(_server_runner, '0.0.0.0', PORT)
+    await site.start()
+    print(f'Web server running on port {PORT}')
 
 
 def vinted_text(item):
     return f"{item.get('title','Okänt')}\n\n{item.get('description','')}\n\nStorlek: {item.get('size','Okänt')}\nSkick: {item.get('condition','Okänt')}\nFärg: {item.get('color','Okänt')}\nPris: {item.get('suggested_price_sek','Okänt')} kr"
 
 class ListingView(discord.ui.View):
-    def __init__(self,id):
+    def __init__(self, id):
         super().__init__(timeout=1800)
-        self.id=id
+        self.id = id
 
     @discord.ui.button(label='📋 Vinted text')
-    async def text(self,i,b):
-        item=get_listing(self.id)
-        await i.response.send_message(vinted_text(item),ephemeral=True)
+    async def text(self, i, b):
+        await i.response.send_message(vinted_text(get_listing(self.id)), ephemeral=True)
 
     @discord.ui.button(label='🔄 Ny beskrivning')
-    async def regen(self,i,b):
+    async def regen(self, i, b):
         await i.response.defer(ephemeral=True)
-        item=get_listing(self.id)
-        item['description']=await regenerate_description(item)
-        update_listing(self.id,item)
-        await i.followup.send('✅ Ny beskrivning skapad:\n'+item['description'],ephemeral=True)
+        item = get_listing(self.id)
+        item['description'] = await regenerate_description(item)
+        update_listing(self.id, item)
+        await i.followup.send('✅ Ny beskrivning skapad:\n' + item['description'], ephemeral=True)
 
     @discord.ui.button(label='💰 Ändra pris')
-    async def price(self,i,b):
+    async def price(self, i, b):
         await i.response.send_modal(PriceModal(self.id))
 
-class PriceModal(discord.ui.Modal,title='Ändra pris'):
-    price=discord.ui.TextInput(label='Pris SEK')
-    def __init__(self,id):
-        super().__init__(); self.id=id
-    async def on_submit(self,i):
-        item=get_listing(self.id)
-        item['suggested_price_sek']=self.price.value
-        update_listing(self.id,item)
-        await i.response.send_message('✅ Pris uppdaterat',ephemeral=True)
+class PriceModal(discord.ui.Modal, title='Ändra pris'):
+    price = discord.ui.TextInput(label='Pris SEK')
+
+    def __init__(self, id):
+        super().__init__()
+        self.id = id
+
+    async def on_submit(self, i):
+        item = get_listing(self.id)
+        item['suggested_price_sek'] = self.price.value
+        update_listing(self.id, item)
+        await i.response.send_message('✅ Pris uppdaterat', ephemeral=True)
 
 @bot.event
 async def on_ready():
     init_db()
-    print(bot.user)
+    print(f'Logged in as {bot.user}')
 
 @bot.event
 async def on_message(message):
-    if message.author.bot:return
-    images=[]
+    if message.author.bot:
+        return
+
+    images = []
     for a in message.attachments[:MAX_IMAGES]:
         if a.content_type and a.content_type.startswith('image/'):
-            images.append((await a.read(),a.content_type))
+            images.append((await a.read(), a.content_type))
+
     if images:
-        msg=await message.reply('🔎 Analyserar...')
+        msg = await message.reply('🔎 Analyserar...')
         try:
-            data=await analyze_images(images)
-            id=save_listing(data)
-            await msg.edit(content=f'✅ Listing #{id}\n\n{vinted_text(data)}',view=ListingView(id))
+            data = await analyze_images(images)
+            id = save_listing(data)
+            await msg.edit(content=f'✅ Listing #{id}\n\n{vinted_text(data)}', view=ListingView(id))
         except Exception as e:
             await msg.edit(content=f'❌ {e}')
+
     await bot.process_commands(message)
 
 @bot.command()
-async def listing(ctx,id:int):
-    item=get_listing(id)
-    await ctx.send(vinted_text(item),view=ListingView(id))
+async def listing(ctx, id: int):
+    item = get_listing(id)
+    await ctx.send(vinted_text(item), view=ListingView(id))
 
 async def main():
     await start_server()
