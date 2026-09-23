@@ -7,6 +7,7 @@ from aiohttp import web
 from database import init_db, save_listing, get_listing, update_listing, get_all_listings
 from gemini_service import analyze_images, regenerate_description
 from reseller_features import listing_quality, generate_tags, photo_quality, recommend_price
+from ai_brain import seller_report
 
 load_dotenv()
 TOKEN=os.getenv('DISCORD_TOKEN')
@@ -53,21 +54,24 @@ async def on_message(message):
     await bot.process_commands(message)
 
 @bot.command()
+async def brain(ctx):
+    report=seller_report(get_all_listings())
+    await ctx.send(f"🧠 AI Seller Brain\n\nSold items: {report['sold_count']}\nBest brand: {report['best_brand']}\nAverage profit: {report['average_profit']}kr\n\n💡 {report['recommendation']}")
+
+@bot.command()
 async def inventory(ctx):
     items=get_all_listings()
     await ctx.send('\n'.join([f"#{i['id']} {i.get('title','')} | {i.get('status','draft')} | {i.get('profit',0)}kr" for i in items[:15]]) or '📦 Empty')
 
 @bot.command()
 async def stale(ctx):
-    items=get_all_listings()
-    old=[]
+    items=get_all_listings(); old=[]
     for i in items:
         created=i.get('created_at')
         if created:
             try:
                 days=(datetime.now()-datetime.fromisoformat(created)).days
-                if days>=14 and i.get('status')!='sold':
-                    old.append(f"#{i['id']} {i.get('title','')} - {days} dagar - sänk pris eller förbättra bilder")
+                if days>=14 and i.get('status')!='sold': old.append(f"#{i['id']} {i.get('title','')} - {days} dagar - sänk pris eller förbättra bilder")
             except: pass
     await ctx.send('⚠️ Stale listings:\n'+'\n'.join(old) if old else '✅ No stale listings')
 
