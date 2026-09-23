@@ -37,3 +37,23 @@ def generate_tags(item):
         if value and value != 'Okänt':
             tags.append(str(value).lower().replace(' ', ''))
     return tags
+
+
+def photo_quality(images):
+    """Basic photo checks before listing."""
+    issues = []
+    count = len(images)
+
+    if count < 3:
+        issues.append('Add more photos (front, back, details)')
+
+    if count == 0:
+        return {'score': 0, 'issues': ['No photos uploaded']}
+
+    score = 100
+    if count < 2:
+        score -= 25
+    if count < 3:
+        score -= 15
+
+    return {'score': max(score, 0), 'issues': issues}
