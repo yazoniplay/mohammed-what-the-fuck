@@ -16,27 +16,22 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-_server_runner = None
-
 async def health(request):
     return web.Response(text='Discord bot is running')
 
 async def start_server():
-    global _server_runner
     app = web.Application()
     app.router.add_get('/', health)
     app.router.add_get('/health', health)
-
-    _server_runner = web.AppRunner(app)
-    await _server_runner.setup()
-
-    site = web.TCPSite(_server_runner, '0.0.0.0', PORT)
-    await site.start()
+    runner = web.AppRunner(app)
+    await runner.setup()
+    await web.TCPSite(runner, '0.0.0.0', PORT).start()
     print(f'Web server running on port {PORT}')
 
 
 def vinted_text(item):
     return f"{item.get('title','Okänt')}\n\n{item.get('description','')}\n\nStorlek: {item.get('size','Okänt')}\nSkick: {item.get('condition','Okänt')}\nFärg: {item.get('color','Okänt')}\nPris: {item.get('suggested_price_sek','Okänt')} kr"
+
 
 class ListingView(discord.ui.View):
     def __init__(self, id):
@@ -53,11 +48,12 @@ class ListingView(discord.ui.View):
         item = get_listing(self.id)
         item['description'] = await regenerate_description(item)
         update_listing(self.id, item)
-        await i.followup.send('✅ Ny beskrivning skapad:\n' + item['description'], ephemeral=True)
+        await i.followup.send('✅ Automatisk ny beskrivning klar:\n' + item['description'], ephemeral=True)
 
     @discord.ui.button(label='💰 Ändra pris')
     async def price(self, i, b):
         await i.response.send_modal(PriceModal(self.id))
+
 
 class PriceModal(discord.ui.Modal, title='Ändra pris'):
     price = discord.ui.TextInput(label='Pris SEK')
@@ -70,12 +66,14 @@ class PriceModal(discord.ui.Modal, title='Ändra pris'):
         item = get_listing(self.id)
         item['suggested_price_sek'] = self.price.value
         update_listing(self.id, item)
-        await i.response.send_message('✅ Pris uppdaterat', ephemeral=True)
+        await i.response.send_message('✅ Pris sparat', ephemeral=True)
+
 
 @bot.event
 async def on_ready():
     init_db()
     print(f'Logged in as {bot.user}')
+
 
 @bot.event
 async def on_message(message):
@@ -88,23 +86,34 @@ async def on_message(message):
             images.append((await a.read(), a.content_type))
 
     if images:
-        msg = await message.reply('🔎 Analyserar...')
+        msg = await message.reply('🤖 Automatisk analys startad...')
         try:
             data = await analyze_images(images)
-            id = save_listing(data)
-            await msg.edit(content=f'✅ Listing #{id}\n\n{vinted_text(data)}', view=ListingView(id))
+            listing_id = save_listing(data)
+
+            # Automatically prepare the listing immediately
+            formatted = vinted_text(data)
+            await msg.edit(
+                content=(f'✅ Listing #{listing_id} skapad automatiskt\n\n'
+                         f'{formatted}\n\n'
+                         'Klicka på knapparna för att förbättra den.'),
+                view=ListingView(listing_id)
+            )
         except Exception as e:
-            await msg.edit(content=f'❌ {e}')
+            await msg.edit(content=f'❌ Automationsfel: {e}')
 
     await bot.process_commands(message)
+
 
 @bot.command()
 async def listing(ctx, id: int):
     item = get_listing(id)
     await ctx.send(vinted_text(item), view=ListingView(id))
 
+
 async def main():
     await start_server()
     await bot.start(TOKEN)
+
 
 asyncio.run(main())
